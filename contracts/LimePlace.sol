@@ -15,13 +15,13 @@ contract LimePlace is ReentrancyGuard {
 
     uint256 public LISTING_FEE = 100000000000000 wei;
     address payable private _marketOwner;
-    mapping(bytes32 => Listing) public _listings;
+    mapping(bytes32 => Listing) private _listings;
     
     //keep track of listings
     TokenList.List private _activeListings;
-    mapping(address => TokenList.List) private _userListings;
+    mapping(address => TokenList.List) private _userActiveListings;
     mapping(address => TokenList.List) private _userTokens;
-    mapping(address => TokenList.List) private _collectionListings;
+    mapping(address => TokenList.List) private _collectionActiveListings;
 
     struct Listing {
         address nftContract;
@@ -78,20 +78,22 @@ contract LimePlace is ReentrancyGuard {
         
         //add listing to active lists
         _activeListings.safeAddToken(tokenId);
-        _userListings[msg.sender].safeAddToken(tokenId);
+        _userActiveListings[msg.sender].safeAddToken(tokenId);
         _userTokens[msg.sender].safeAddToken(tokenId);
-        _collectionListings[_nftContract].safeAddToken(tokenId);
+        _collectionActiveListings[_nftContract].safeAddToken(tokenId);
         
         _nftCount.increment();
         emit NFTListed(_nftContract, _tokenId, msg.sender, _price);
     }
     
     function cancelListing(bytes32 _tokenId) public {
+        //todo check if listing seller is msg.sender
+        
         Listing storage nft = _listings[_tokenId];
         nft.listed = false;
         _activeListings.safeRemoveToken(_tokenId);
-        _userListings[nft.seller].safeRemoveToken(_tokenId);
-        _collectionListings[nft.nftContract].safeRemoveToken(_tokenId);
+        _userActiveListings[nft.seller].safeRemoveToken(_tokenId);
+        _collectionActiveListings[nft.nftContract].safeRemoveToken(_tokenId);
         //todo emit new event!
     }
 
@@ -108,10 +110,10 @@ contract LimePlace is ReentrancyGuard {
 
         //remove listing from active lists
         _activeListings.safeRemoveToken(_tokenId);
-        _userListings[seller].safeRemoveToken(_tokenId);
+        _userActiveListings[seller].safeRemoveToken(_tokenId);
         _userTokens[seller].safeRemoveToken(_tokenId);
         _userTokens[buyer].safeAddToken(_tokenId);
-        _collectionListings[nft.nftContract].safeRemoveToken(_tokenId);
+        _collectionActiveListings[nft.nftContract].safeRemoveToken(_tokenId);
         
         _nftsSold.increment();
         emit NFTSold(nft.nftContract, nft.tokenId, nft.seller, buyer, msg.value);
@@ -126,11 +128,15 @@ contract LimePlace is ReentrancyGuard {
     }
 
     function getListedNftsByUser(address _user) public view returns (bytes32[] memory) {
-        return _userListings[_user].getList();
+        return _userActiveListings[_user].getList();
     }
 
     function getListedNftsByCollection(address _nftContract) public view returns (bytes32[] memory) {
-        return _collectionListings[_nftContract].getList();
+        return _collectionActiveListings[_nftContract].getList();
+    }
+    
+    function getListing(bytes32 _listingId) public view returns (Listing memory) {
+        return _listings[_listingId];
     }
     
     function generateTokenId(address _contractAddress, uint256 _tokenId) public pure returns(bytes32) {

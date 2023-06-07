@@ -61,6 +61,15 @@ describe("LimePlace", () => {
       const collectionList = await marketPlace.getListedNftsByCollection(nft.address);
       expect(collectionList.length).to.equal(2);
     })
+
+    it("Should edit listing", async () => {
+      //pay listing fee
+      const options = {value: ethers.utils.parseEther("0.0001")}
+      await marketPlace.connect(user1).listNft(nft.address, 1, 90, options);
+      const listingId = await marketPlace.generateTokenId(nft.address, 1);
+      const listing = await marketPlace.getListing(listingId);
+      expect(listing.price).to.equal(90);
+    })
     
   });
 
@@ -70,7 +79,31 @@ describe("LimePlace", () => {
       expect(marketPlace.connect(user2).buyNft(listingId)).to.be.revertedWith(
           "Not enough ether to cover asking price");
     });
-    
+
+    it("Should transfer the token", async () => {
+      const listingId = await marketPlace.generateTokenId(nft.address, 1);
+      const options = {value: 100}
+      await marketPlace.connect(user2).buyNft(listingId, options);
+      const newOwner = await nft.ownerOf(1)
+      expect(newOwner).to.equal(user2.address);
+    });
+
+    it("Should cancel listing after buy", async () => {
+      const listingId = await marketPlace.generateTokenId(nft.address, 2);
+      const options = {value: 150}
+      await marketPlace.connect(user1).buyNft(listingId, options);
+      const listing = await marketPlace.getListing(listingId);
+      expect(listing.listed).to.equal(false);
+    });
+  });
+
+  describe("cancelListing", () => {
+    it("Should cancel listing", async () => {
+      const listingId = await marketPlace.generateTokenId(nft.address, 1);
+      await marketPlace.connect(user1).cancelListing(listingId);
+      const listing = await marketPlace.getListing(listingId);
+      expect(listing.listed).to.equal(false);
+    });
   });
   
 });

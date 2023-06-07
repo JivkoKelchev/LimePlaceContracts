@@ -25,7 +25,7 @@ library TokenList {
             list.array[position] = lastToken;
             list.array.pop();
             list.position[lastToken] = position;
-        }else{
+        }else if(list.array.length == 1){
             list.array.pop();
         }
     }
