@@ -85,6 +85,15 @@ contract LimePlace is ReentrancyGuard {
         _nftCount.increment();
         emit NFTListed(_nftContract, _tokenId, msg.sender, _price);
     }
+    
+    function cancelListing(bytes32 _tokenId) public {
+        Listing storage nft = _listings[_tokenId];
+        nft.listed = false;
+        _activeListings.safeRemoveToken(_tokenId);
+        _userListings[nft.seller].safeRemoveToken(_tokenId);
+        _collectionListings[nft.nftContract].safeRemoveToken(_tokenId);
+        //todo emit new event!
+    }
 
     // Buy an NFT
     function buyNft(bytes32 _tokenId) public payable nonReentrant {
