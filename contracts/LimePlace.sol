@@ -128,6 +128,10 @@ contract LimePlace is ReentrancyGuard {
     function getListedNftsByUser(address _user) public view returns (bytes32[] memory) {
         return _userListings[_user].getList();
     }
+
+    function getListedNftsByCollection(address _nftContract) public view returns (bytes32[] memory) {
+        return _collectionListings[_nftContract].getList();
+    }
     
     function generateTokenId(address _contractAddress, uint256 _tokenId) public pure returns(bytes32) {
         return keccak256(abi.encode(_contractAddress, _tokenId));
