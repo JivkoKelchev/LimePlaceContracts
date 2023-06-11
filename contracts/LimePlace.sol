@@ -1,27 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.18;
 
-import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./TokenList.sol";
 
-contract LimePlace is ReentrancyGuard {
-    using Counters for Counters.Counter;
+contract LimePlace {
     using TokenList for TokenList.List;
-    
-    Counters.Counter private _nftsSold;
-    Counters.Counter private _nftCount;
 
     uint256 public LISTING_FEE = 100000000000000 wei;
     address payable private _marketOwner;
     mapping(bytes32 => Listing) private _listings;
     
-    //keep track of listings
+    //keep track of active listings
     TokenList.List private _activeListings;
-    mapping(address => TokenList.List) private _userActiveListings;
-    mapping(address => TokenList.List) private _userTokens;
-    mapping(address => TokenList.List) private _collectionActiveListings;
 
     struct Listing {
         address nftContract;
@@ -30,40 +21,30 @@ contract LimePlace is ReentrancyGuard {
         uint256 price;
         bool listed;
     }
-    event NFTListed(
-        address nftContract,
-        uint256 tokenId,
-        address seller,
-        uint256 price
-    );
-    event NFTSold(
-        address nftContract,
-        uint256 tokenId,
-        address seller,
-        address owner,
-        uint256 price
-    );
+    
+    event LogListingAdded(bytes32 listingId, address nftContract, uint256 nftId, address seller, uint256 price);
+    event LogListingUpdated(bytes32 listingId, address nftContract, uint256 nftId, address seller, uint256 price, bool active);
+    event LogListingSold(bytes32 listingId, address nftContract, uint256 nftId, address seller, address owner, uint256 price);
 
     constructor() {
         _marketOwner = payable(msg.sender);
     }
 
     // List the NFT on the marketplace
-    function listNft(address _nftContract, uint256 _tokenId, uint256 _price) public payable nonReentrant {
+    function list(address _nftContract, uint256 _tokenId, uint256 _price) public payable {
         require(_price > 0, "Price must be at least 1 wei");
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
         //check if token is supporting erc721
         require(IERC721(_nftContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
         require(IERC721(_nftContract).getApproved(_tokenId) == address(this), "LimePlace should be approved for operator");
-        //IERC721(_nftContract).transferFrom(msg.sender, address(this), _tokenId);
         _marketOwner.transfer(LISTING_FEE);
-        bytes32 tokenId = generateTokenId(_nftContract, _tokenId);
+        bytes32 listingId = generateListingId(_nftContract, _tokenId);
         
         //check for existing _listings
-        if(_listings[tokenId].nftContract == address(0)) {
+        if(_listings[listingId].nftContract == address(0)) {
             //create listing
-            _listings[tokenId] = Listing(
+            _listings[listingId] = Listing(
                 _nftContract,
                 _tokenId,
                 payable(msg.sender),
@@ -71,35 +52,35 @@ contract LimePlace is ReentrancyGuard {
                 true
             );
         } else {
-            _listings[tokenId].seller = payable(msg.sender);
-            _listings[tokenId].price = _price;
-            _listings[tokenId].listed = true;
+            _listings[listingId].seller = payable(msg.sender);
+            _listings[listingId].price = _price;
+            _listings[listingId].listed = true;
         }
         
         //add listing to active lists
-        _activeListings.safeAddToken(tokenId);
-        _userActiveListings[msg.sender].safeAddToken(tokenId);
-        _userTokens[msg.sender].safeAddToken(tokenId);
-        _collectionActiveListings[_nftContract].safeAddToken(tokenId);
+        _activeListings.safeAddToken(listingId);
         
-        _nftCount.increment();
-        emit NFTListed(_nftContract, _tokenId, msg.sender, _price);
+        emit LogListingAdded(listingId, _nftContract, _tokenId, msg.sender, _price);
     }
     
-    function cancelListing(bytes32 _tokenId) public {
-        //todo check if listing seller is msg.sender
+    //edit is used for edit price or cancel listing
+    function editListing(bytes32 _listingId, uint256 _price, bool _listed) public {
+        Listing storage nft = _listings[_listingId];
+        require(msg.sender == nft.seller, "You can edit only your NFTs!");
+        //edit price
+        nft.price = _price;
+        //cancel listing
+        if(_listed == false) {
+            nft.listed = _listed;
+            _activeListings.safeRemoveToken(_listingId);
+        }
         
-        Listing storage nft = _listings[_tokenId];
-        nft.listed = false;
-        _activeListings.safeRemoveToken(_tokenId);
-        _userActiveListings[nft.seller].safeRemoveToken(_tokenId);
-        _collectionActiveListings[nft.nftContract].safeRemoveToken(_tokenId);
-        //todo emit new event!
+        emit LogListingUpdated(_listingId, nft.nftContract, nft.tokenId, msg.sender, _price, _listed);
     }
 
     // Buy an NFT
-    function buyNft(bytes32 _tokenId) public payable nonReentrant {
-        Listing storage nft = _listings[_tokenId];
+    function buy(bytes32 _listingId) public payable {
+        Listing storage nft = _listings[_listingId];
         require(msg.value >= nft.price, "Not enough ether to cover asking price");
         
         address payable buyer = payable(msg.sender);
@@ -109,37 +90,20 @@ contract LimePlace is ReentrancyGuard {
         nft.listed = false;
 
         //remove listing from active lists
-        _activeListings.safeRemoveToken(_tokenId);
-        _userActiveListings[seller].safeRemoveToken(_tokenId);
-        _userTokens[seller].safeRemoveToken(_tokenId);
-        _userTokens[buyer].safeAddToken(_tokenId);
-        _collectionActiveListings[nft.nftContract].safeRemoveToken(_tokenId);
+        _activeListings.safeRemoveToken(_listingId);
         
-        _nftsSold.increment();
-        emit NFTSold(nft.nftContract, nft.tokenId, nft.seller, buyer, msg.value);
+        emit LogListingSold(_listingId, nft.nftContract, nft.tokenId, nft.seller, buyer, msg.value);
     }
     
     function getListedNfts() public view returns (bytes32[] memory) {
         return _activeListings.getList();
     }
     
-    function getNftsByUser(address _user) public view returns (bytes32[] memory) {
-        return _userTokens[_user].getList();
-    }
-
-    function getListedNftsByUser(address _user) public view returns (bytes32[] memory) {
-        return _userActiveListings[_user].getList();
-    }
-
-    function getListedNftsByCollection(address _nftContract) public view returns (bytes32[] memory) {
-        return _collectionActiveListings[_nftContract].getList();
-    }
-    
     function getListing(bytes32 _listingId) public view returns (Listing memory) {
         return _listings[_listingId];
     }
     
-    function generateTokenId(address _contractAddress, uint256 _tokenId) public pure returns(bytes32) {
+    function generateListingId(address _contractAddress, uint256 _tokenId) public pure returns(bytes32) {
         return keccak256(abi.encode(_contractAddress, _tokenId));
     }
 }
