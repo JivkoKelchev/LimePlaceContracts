@@ -60,11 +60,6 @@ describe("LimePlace", () => {
       expect(marketPlace.connect(user1).list(nft.address, 3, 100, options)).to.be.revertedWith(
           "LimePlace should be approved for operator");
     });
-    
-    it("Should add to listing", async () => {
-      const allListings = await marketPlace.getListedNfts();
-      expect(allListings.length).to.equal(2);
-    })
 
     it("Should edit listing on resell", async () => {
       //pay listing fee
