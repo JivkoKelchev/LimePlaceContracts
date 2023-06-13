@@ -29,8 +29,8 @@ describe("LimePlace", () => {
     await nft.connect(user1).mint("testUri_3");
     
     //approve marketplace to operate
-    await nft.connect(user1).approve(marketPlace.address, 1);
-    await nft.connect(user2).approve(marketPlace.address, 2);
+    await nft.connect(user1).setApprovalForAll(marketPlace.address, true);
+    await nft.connect(user2).setApprovalForAll(marketPlace.address, true);
     //pay listing fee
     const options = {value: ethers.utils.parseEther("0.0001")}
     //list 2 NFTs
@@ -72,30 +72,6 @@ describe("LimePlace", () => {
     
   });
 
-  describe("buyNft", () => {
-    it("Should fail on value < price", async () => {
-      const listingId = await marketPlace.generateListingId(nft.address, 1);
-      expect(marketPlace.connect(user2).buy(listingId)).to.be.revertedWith(
-          "Not enough ether to cover asking price");
-    });
-
-    it("Should transfer the token", async () => {
-      const listingId = await marketPlace.generateListingId(nft.address, 1);
-      const options = {value: 100}
-      await marketPlace.connect(user2).buy(listingId, options);
-      const newOwner = await nft.ownerOf(1)
-      expect(newOwner).to.equal(user2.address);
-    });
-
-    it("Should cancel listing after buy", async () => {
-      const listingId = await marketPlace.generateListingId(nft.address, 2);
-      const options = {value: 150}
-      await marketPlace.connect(user1).buy(listingId, options);
-      const listing = await marketPlace.getListing(listingId);
-      expect(listing.listed).to.equal(false);
-    });
-  });
-
   describe("Edit Listing", () => {
     it("Should cancel listing", async () => {
       const listingId = await marketPlace.generateListingId(nft.address, 1);
@@ -107,7 +83,7 @@ describe("LimePlace", () => {
     it("Should fail when edit others listings", async () => {
       const listingId = await marketPlace.generateListingId(nft.address, 2);
       expect(marketPlace.connect(user1).editListing(listingId, 100, false)).to.be.revertedWith(
-          "You can edit only your NFTs!");
+          "You can edit only your listings!");
     });
 
     it("Should edit the price", async () => {
@@ -115,6 +91,42 @@ describe("LimePlace", () => {
       await marketPlace.connect(user1).editListing(listingId, 69, true);
       const listing = await marketPlace.getListing(listingId);
       expect(listing.price).to.equal(69);
+    });
+  });
+
+  describe("buyNft", () => {
+    it("Should fail on value < price", async () => {
+      const listingId = await marketPlace.generateListingId(nft.address, 1);
+      expect(marketPlace.connect(user2).buy(listingId)).to.be.revertedWith(
+          "Not enough ether to cover asking price");
+    });
+
+    it("Should transfer the token", async () => {
+      const listingId = await marketPlace.generateListingId(nft.address, 2);
+      const options = {value: 150}
+      await marketPlace.connect(user1).buy(listingId, options);
+      const newOwner = await nft.ownerOf(2)
+      expect(newOwner).to.equal(user1.address);
+    });
+
+    it("Should cancel listing after buy", async () => {
+      const listingId = await marketPlace.generateListingId(nft.address, 2);
+      const listing = await marketPlace.getListing(listingId);
+      expect(listing.listed).to.equal(false);
+    });
+
+    it("Should fail expired listing", async () => {
+      //set future block timestamp
+      const block = await ethers.provider.getBlock('latest');
+      const currentTimestamp = block.timestamp; // Get the current block timestamp
+      const twoMonths = 61 * 24 * 60 * 60; // Equivalent number of seconds in a month
+      // Set the desired older timestamp
+      await ethers.provider.send('evm_setNextBlockTimestamp', [currentTimestamp + twoMonths]);
+
+      const listingId = await marketPlace.generateListingId(nft.address, 1);
+      const options = {value: 100}
+      expect(marketPlace.connect(user2).buy(listingId, options)).to.be.revertedWith(
+          "This listing is expired!");
     });
   });
   

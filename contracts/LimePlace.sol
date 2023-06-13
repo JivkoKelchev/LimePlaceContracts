@@ -15,6 +15,7 @@ contract LimePlace is ReentrancyGuard{
         address payable seller;
         uint256 price;
         bool listed;
+        uint256 updatedAt;
     }
     
     event LogListingAdded(bytes32 listingId, address tokenContract, uint256 tokenId, address seller, uint256 price);
@@ -32,7 +33,7 @@ contract LimePlace is ReentrancyGuard{
         
         //check if token is supporting erc721
         require(IERC721(_nftContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
-        require(IERC721(_nftContract).getApproved(_tokenId) == address(this), "LimePlace should be approved for operator");
+        require(IERC721(_nftContract).isApprovedForAll(msg.sender, address (this)), "LimePlace should be approved for operator");
         _marketOwner.transfer(LISTING_FEE);
         bytes32 listingId = generateListingId(_nftContract, _tokenId);
         
@@ -44,12 +45,14 @@ contract LimePlace is ReentrancyGuard{
                 _tokenId,
                 payable(msg.sender),
                 _price,
-                true
+                true,
+                block.timestamp
             );
         } else {
             _listings[listingId].seller = payable(msg.sender);
             _listings[listingId].price = _price;
             _listings[listingId].listed = true;
+            _listings[listingId].updatedAt = block.timestamp;
         }
         
         emit LogListingAdded(listingId, _nftContract, _tokenId, msg.sender, _price);
@@ -57,20 +60,21 @@ contract LimePlace is ReentrancyGuard{
     
     //edit is used for edit price or cancel listing
     function editListing(bytes32 _listingId, uint256 _price, bool _listed) public {
-        Listing storage nft = _listings[_listingId];
-        require(msg.sender == nft.seller, "You can edit only your NFTs!");
+        Listing storage listing = _listings[_listingId];
+        require(msg.sender == listing.seller, "You can edit only your listings!");
         //edit price
-        nft.price = _price;
+        listing.price = _price;
+        listing.updatedAt = block.timestamp;
         //cancel listing
         if(_listed == false) {
-            nft.listed = _listed;
+            listing.listed = _listed;
         }
         
-        emit LogListingUpdated(_listingId, nft.nftContract, nft.tokenId, msg.sender, _price, _listed);
+        emit LogListingUpdated(_listingId, listing.nftContract, listing.tokenId, msg.sender, _price, _listed);
     }
 
     // Buy an NFT
-    function buy(bytes32 _listingId) public payable nonReentrant{
+    function buy(bytes32 _listingId) public payable isNotExpired(_listingId) nonReentrant{
         Listing storage nft = _listings[_listingId];
         require(msg.value >= nft.price, "Not enough ether to cover asking price");
         
@@ -90,5 +94,13 @@ contract LimePlace is ReentrancyGuard{
     
     function generateListingId(address _contractAddress, uint256 _tokenId) public pure returns(bytes32) {
         return keccak256(abi.encode(_contractAddress, _tokenId));
+    }
+
+    //modifiers
+    modifier isNotExpired(bytes32 _listingId) {
+        Listing storage listing = _listings[_listingId];
+        uint256 oneMonth = 30 days;
+        require(listing.updatedAt + oneMonth >= block.timestamp, "This listing is expired!");
+        _;
     }
 }
