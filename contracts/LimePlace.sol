@@ -50,7 +50,7 @@ contract LimePlace {
     }
     
     //edit is used for edit price or cancel listing
-    function editListing(bytes32 _listingId, uint256 _price, bool _listed) public {
+    function editListing(bytes32 _listingId, uint256 _price) public {
         Listing storage listing = _listings[_listingId];
         require(msg.sender == listing.seller, "You can edit only your listings!");
         //edit price
