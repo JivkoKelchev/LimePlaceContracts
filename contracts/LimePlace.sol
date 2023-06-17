@@ -2,15 +2,16 @@
 pragma solidity 0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract LimePlace is ReentrancyGuard{
+contract LimePlace {
     uint256 public LISTING_FEE = 100000000000000 wei;
-    address payable private _marketOwner;
+    uint256 private pendingFees;
+    uint256 private fees;
+    
     mapping(bytes32 => Listing) private _listings;
 
     struct Listing {
-        address nftContract;
+        address tokenContract;
         uint256 tokenId;
         address payable seller;
         uint256 price;
@@ -19,43 +20,33 @@ contract LimePlace is ReentrancyGuard{
     }
     
     event LogListingAdded(bytes32 listingId, address tokenContract, uint256 tokenId, address seller, uint256 price);
-    event LogListingUpdated(bytes32 listingId, address tokenContract, uint256 tokenId, address seller, uint256 price, bool active);
-    event LogListingSold(bytes32 listingId, address tokenContract, uint256 tokenId, address seller, address owner, uint256 price);
-
-    constructor() {
-        _marketOwner = payable(msg.sender);
-    }
+    event LogListingUpdated(bytes32 listingId, uint256 price);
+    event LogListingCanceled(bytes32 listingId, bool active);
+    event LogListingSold(bytes32 listingId, address buyer, uint256 price);
 
     // List the NFT on the marketplace
-    function list(address _nftContract, uint256 _tokenId, uint256 _price) public payable {
+    function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable {
         require(_price > 0, "Price must be at least 1 wei");
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
         //check if token is supporting erc721
-        require(IERC721(_nftContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
-        require(IERC721(_nftContract).isApprovedForAll(msg.sender, address (this)), "LimePlace should be approved for operator");
-        _marketOwner.transfer(LISTING_FEE);
-        bytes32 listingId = generateListingId(_nftContract, _tokenId);
-        
-        //check for existing _listings
-        if(_listings[listingId].nftContract == address(0)) {
+        require(IERC721(_tokenContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
+        require(IERC721(_tokenContract).isApprovedForAll(msg.sender, address (this)), "LimePlace should be approved for operator");
+        bytes32 listingId = generateListingId(_tokenContract, _tokenId);
+        if(_listings[listingId].tokenContract == address(0)) {
             //create listing
             _listings[listingId] = Listing(
-                _nftContract,
+                _tokenContract,
                 _tokenId,
                 payable(msg.sender),
                 _price,
                 true,
                 block.timestamp
             );
-        } else {
-            _listings[listingId].seller = payable(msg.sender);
-            _listings[listingId].price = _price;
-            _listings[listingId].listed = true;
-            _listings[listingId].updatedAt = block.timestamp;
-        }
+        } 
         
-        emit LogListingAdded(listingId, _nftContract, _tokenId, msg.sender, _price);
+        pendingFees += msg.value;
+        emit LogListingAdded(listingId, _tokenContract, _tokenId, msg.sender, _price);
     }
     
     //edit is used for edit price or cancel listing
@@ -65,35 +56,50 @@ contract LimePlace is ReentrancyGuard{
         //edit price
         listing.price = _price;
         listing.updatedAt = block.timestamp;
-        //cancel listing
-        if(_listed == false) {
-            listing.listed = _listed;
-        }
         
-        emit LogListingUpdated(_listingId, listing.nftContract, listing.tokenId, msg.sender, _price, _listed);
+        emit LogListingUpdated(_listingId, _price);
+    }
+    
+    function cancelListing(bytes32 _listingId) public {
+        uint256 gasCost = gasleft() * tx.gasprice;
+        Listing storage listing = _listings[_listingId];
+        require(msg.sender == listing.seller, "You cancel only your listings");
+        require(listing.listed == true, "Listing is already canceled");
+        
+        listing.listed = false;
+        pendingFees -= LISTING_FEE;
+        uint256 refundAmount = LISTING_FEE - gasCost;
+        payable (msg.sender).transfer(refundAmount);
+        
+        emit LogListingCanceled(_listingId, false);
     }
 
     // Buy an NFT
-    function buy(bytes32 _listingId) public payable isNotExpired(_listingId) nonReentrant{
-        Listing storage nft = _listings[_listingId];
-        require(msg.value >= nft.price, "Not enough ether to cover asking price");
+    function buy(bytes32 _listingId) public payable isNotExpired(_listingId) {
         
-        address payable buyer = payable(msg.sender);
-        address payable seller = payable(nft.seller);
-        nft.listed = false;
+        Listing storage listing = _listings[_listingId];
+        require(listing.listed == true, "This listing is not active");
+        require(msg.value >= listing.price, "Not enough ether to cover asking price");
 
-        seller.transfer(msg.value);
-        IERC721(nft.nftContract).transferFrom(seller, buyer, nft.tokenId);
+        address payable buyer = payable(msg.sender);
+        address payable seller = payable(listing.seller);
+        listing.listed = false;
         
-        emit LogListingSold(_listingId, nft.nftContract, nft.tokenId, nft.seller, buyer, msg.value);
+        pendingFees -= LISTING_FEE;
+        fees += LISTING_FEE;
+        
+        IERC721(listing.tokenContract).transferFrom(seller, buyer, listing.tokenId);
+        seller.transfer(msg.value);
+        
+        emit LogListingSold(_listingId, buyer, msg.value);
     }
     
     function getListing(bytes32 _listingId) public view returns (Listing memory) {
         return _listings[_listingId];
     }
     
-    function generateListingId(address _contractAddress, uint256 _tokenId) public pure returns(bytes32) {
-        return keccak256(abi.encode(_contractAddress, _tokenId));
+    function generateListingId(address _contractAddress, uint256 _tokenId) public view returns(bytes32) {
+        return keccak256(abi.encode(_contractAddress, _tokenId, block.timestamp));
     }
 
     //modifiers
@@ -103,4 +109,7 @@ contract LimePlace is ReentrancyGuard{
         require(listing.updatedAt + oneMonth >= block.timestamp, "This listing is expired!");
         _;
     }
+    
+    //check for wrapped ether
+    //https://sepolia.etherscan.io/token/0x7b79995e5f793a07bc00c21412e50ecae098e7f9
 }
