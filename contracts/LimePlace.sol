@@ -25,7 +25,7 @@ contract LimePlace {
     event LogListingSold(bytes32 listingId, address buyer, uint256 price);
 
     // List the NFT on the marketplace
-    function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable {
+    function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable returns(bytes32){
         require(_price > 0, "Price must be at least 1 wei");
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
@@ -33,26 +33,23 @@ contract LimePlace {
         require(IERC721(_tokenContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
         require(IERC721(_tokenContract).isApprovedForAll(msg.sender, address (this)), "LimePlace should be approved for operator");
         bytes32 listingId = generateListingId(_tokenContract, _tokenId);
-        if(_listings[listingId].tokenContract == address(0)) {
-            //create listing
-            _listings[listingId] = Listing(
-                _tokenContract,
-                _tokenId,
-                payable(msg.sender),
-                _price,
-                true,
-                block.timestamp
-            );
-        } 
-        
+        _listings[listingId] = Listing(
+            _tokenContract,
+            _tokenId,
+            payable(msg.sender),
+            _price,
+            true,
+            block.timestamp
+        );
         pendingFees += msg.value;
         emit LogListingAdded(listingId, _tokenContract, _tokenId, msg.sender, _price);
+        return listingId;
     }
     
     //edit is used for edit price or cancel listing
     function editListing(bytes32 _listingId, uint256 _price) public {
         Listing storage listing = _listings[_listingId];
-        require(msg.sender == listing.seller, "You can edit only your listings!");
+        require(msg.sender == listing.seller, "You can edit only your listings");
         //edit price
         listing.price = _price;
         listing.updatedAt = block.timestamp;
@@ -61,15 +58,13 @@ contract LimePlace {
     }
     
     function cancelListing(bytes32 _listingId) public {
-        uint256 gasCost = gasleft() * tx.gasprice;
         Listing storage listing = _listings[_listingId];
         require(msg.sender == listing.seller, "You cancel only your listings");
         require(listing.listed == true, "Listing is already canceled");
         
         listing.listed = false;
         pendingFees -= LISTING_FEE;
-        uint256 refundAmount = LISTING_FEE - gasCost;
-        payable (msg.sender).transfer(refundAmount);
+        payable (msg.sender).transfer(LISTING_FEE);
         
         emit LogListingCanceled(_listingId, false);
     }
