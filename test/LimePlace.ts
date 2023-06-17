@@ -27,8 +27,7 @@ describe("LimePlace", () => {
     //mint 2 NFTs
     await nft.connect(user1).mint("testUri_1");
     await nft.connect(user2).mint("testUri_2");
-    //mint 1 unapproved token
-    await nft.connect(user1).mint("testUri_3");
+    
     //approve marketplace to operate
     await nft.connect(user1).setApprovalForAll(marketPlace.address, true);
     await nft.connect(user2).setApprovalForAll(marketPlace.address, true);
@@ -84,9 +83,11 @@ describe("LimePlace", () => {
     });
 
     it("Should fail for tokens without approve", async () => {
-      const {marketPlace, nft, user1} = await loadFixture(deploy);
+      const {marketPlace, nft, owner} = await loadFixture(deploy);
       const options = {value: ethers.utils.parseEther("0.0001")}
-      expect(marketPlace.connect(user1).list(nft.address, 3, 100, options)).to.be.revertedWith(
+      //mint unapproved token
+      await nft.connect(owner).mint('test_69');
+      expect(marketPlace.connect(owner).list(nft.address, 3, 100, options)).to.be.revertedWith(
           "LimePlace should be approved for operator");
     });
 
@@ -96,9 +97,29 @@ describe("LimePlace", () => {
       expect(listing.price).to.equal(100);
     })
 
+    it("Should pay fees", async () => {
+      const {marketPlace, owner} = await loadFixture(deploy);
+      const balance = await marketPlace.connect(owner).getBalance();
+      const pendingFees = await marketPlace.connect(owner).getPendingFees();
+      const expectedFees = ethers.utils.parseEther(LISTING_FEE.toString());
+      expect(balance).to.equal(pendingFees).to.equal(expectedFees.mul(2));
+    })
+    
+    it("Should emit event LogListingAdded", async () => {
+      const { marketPlace, nft, user1 } = await loadFixture(deploy);
+      await nft.connect(user1).mint('test_69');
+      expect(marketPlace.connect(user1).list(nft.address, 3, 15))
+          .to.emit(marketPlace, 'LogListingAdded');
+    });
   });
 
   describe("Edit Listing", () => {
+    it("Should fail on 0 price", async () => {
+      const { marketPlace, nft, user1, listingId1 } = await loadFixture(deploy);
+      expect(marketPlace.connect(user1).editListing(listingId1, 0)).to.revertedWith(
+        'he price should be more than 0'  
+      );
+    });
 
     it("Should fail when edit others listings", async () => {
       const {marketPlace, user1, listingId2 } = await loadFixture(deploy);
@@ -108,10 +129,17 @@ describe("LimePlace", () => {
 
     it("Should edit the price", async () => {
       const {marketPlace, user1, listingId1 } = await loadFixture(deploy);
-      // const listingId = marketPlace.listingIds(0)
       await marketPlace.connect(user1).editListing(listingId1, 69);
       const listing = await marketPlace.getListing(listingId1);
       expect(listing.price).to.equal(69);
+    });
+
+    it("Should update the timestamp", async () => {
+      const {marketPlace, user1, listingId1 } = await loadFixture(deploy);
+      const listingBeforeUpdate = await marketPlace.getListing(listingId1);
+      await marketPlace.connect(user1).editListing(listingId1, 69);
+      const listingAfterUpdate = await marketPlace.getListing(listingId1);
+      expect(listingBeforeUpdate.updatedAt).to.lt(listingAfterUpdate.updatedAt);
     });
   });
 
@@ -138,24 +166,26 @@ describe("LimePlace", () => {
 
     it("Should return listing fee", async () => {
       const {marketPlace, user1, listingId1 } = await loadFixture(deploy);
-      //get current balance
-      const userBalance = await user1.getBalance();
-      //estimate gas
-      const gasUnits = await marketPlace.connect(user1).estimateGas.cancelListing(listingId1);
-      const gasPrice = await marketPlace.provider.getGasPrice();
-      const gasFee = gasUnits.mul(gasPrice);
-      //get balance after transaction
-      await marketPlace.connect(user1).cancelListing(listingId1);
-      const finalBalance = await user1.getBalance();
-      //calculate total fee
-      const totalFeeInWei = finalBalance.sub(userBalance).add(gasFee);
-      const totalFeeInEther = ethers.utils.formatEther(totalFeeInWei.toString());
-      expect(parseFloat(totalFeeInEther)).to.approximately(LISTING_FEE, 0.00005);
+      const balanceBefore = await user1.getBalance();
+      let tx = await marketPlace.connect(user1).cancelListing(listingId1);
+      let receipt = await tx.wait();
+      let gasCost = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+      const balanceAfter = await user1.getBalance();
+      let listingFee = ethers.utils.parseEther(LISTING_FEE.toString());
+      expect(balanceBefore.add(listingFee).sub(gasCost)).to.equal(balanceAfter);
     });
     
   });
 
   describe("Buy Nft", () => {
+    it("Should fail on canceld listings", async () => {
+      const {marketPlace, user1, user2, listingId1 } = await loadFixture(deploy);
+      await marketPlace.connect(user1).cancelListing(listingId1);
+      expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
+          "This listing is not active");
+    });
+    
+    
     it("Should fail on value < price", async () => {
       const {marketPlace, user2, listingId1 } = await loadFixture(deploy);
       expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
@@ -178,6 +208,17 @@ describe("LimePlace", () => {
       expect(listing.listed).to.equal(false);
     });
 
+    it("Should move fees from pending", async () => {
+      const {marketPlace, owner, user1, listingId2 } = await loadFixture(deploy);
+      const options = {value: 150}
+      await marketPlace.connect(user1).buy(listingId2, options);
+      const balance = await marketPlace.connect(owner).getBalance();
+      const pendingFees = await marketPlace.connect(owner).getPendingFees();
+      const fees = await marketPlace.connect(owner).getFees();
+      const expectedFees = ethers.utils.parseEther(LISTING_FEE.toString());
+      expect(balance.div(2)).to.equal(pendingFees).to.equal(fees).to.equal(expectedFees);
+    });
+
     it("Should fail expired listing", async () => {
       const {marketPlace, nft, user2} = await loadFixture(deploy);
       //set future block timestamp
@@ -190,8 +231,58 @@ describe("LimePlace", () => {
       const listingId = await marketPlace.generateListingId(nft.address, 1);
       const options = {value: 100}
       expect(marketPlace.connect(user2).buy(listingId, options)).to.be.revertedWith(
-          "This listing is expired!");
+          "This listing is expired");
     });
+
+    it("Should emit event LogListingSold", async () => {
+      const { marketPlace, user2, listingId1} = await loadFixture(deploy);
+      const options = {value: 100}
+      expect(marketPlace.connect(user2).buy(listingId1, options))
+          .to.emit(marketPlace, 'LogListingSold')
+          .withArgs(listingId1, user2.address, 100);
+    });
+    
   });
-  //todo test fees and balances!!!
+
+  describe("Test owner functions", () => {
+    it("Should fail if user call getBalance()", async () => {
+      const {marketPlace, user1} = await loadFixture(deploy);
+      expect(marketPlace.connect(user1).getBalance()).to.be.revertedWith(
+          "Ownable: caller is not the owner");
+    });
+
+    it("Should fail if user call getPendingFees()", async () => {
+      const {marketPlace, user1} = await loadFixture(deploy);
+      expect(marketPlace.connect(user1).getPendingFees()).to.be.revertedWith(
+          "Ownable: caller is not the owner");
+    });
+
+    it("Should fail if user call getFees()", async () => {
+      const {marketPlace, user1} = await loadFixture(deploy);
+      expect(marketPlace.connect(user1).getFees()).to.be.revertedWith(
+          "Ownable: caller is not the owner");
+    });
+
+    it("Should fail if user call withdrawFees()", async () => {
+      const {marketPlace, user1} = await loadFixture(deploy);
+      expect(marketPlace.connect(user1).withdrawFees()).to.be.revertedWith(
+          "Ownable: caller is not the owner");
+    });
+
+    it("Should withdraw Fees", async () => {
+      const {marketPlace, owner, user1, listingId2 } = await loadFixture(deploy);
+      const options = {value: 150}
+      await marketPlace.connect(user1).buy(listingId2, options);
+      const fees = await marketPlace.connect(owner).getFees();
+      
+      const ownerBalanceBefore = await owner.getBalance();
+      let tx = await marketPlace.connect(owner).withdrawFees();
+      const ownerBalanceAfter = await owner.getBalance();
+      
+      let receipt = await tx.wait();
+      let gasCost = receipt.gasUsed.mul(receipt.effectiveGasPrice);
+      expect(ownerBalanceBefore.add(fees).sub(gasCost)).to.equal(ownerBalanceAfter);
+    });
+    
+  });
 });
