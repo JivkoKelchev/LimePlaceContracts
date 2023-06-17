@@ -51,6 +51,7 @@ contract LimePlace is Ownable {
     function editListing(bytes32 _listingId, uint256 _price) public {
         Listing storage listing = _listings[_listingId];
         require(msg.sender == listing.seller, "You can edit only your listings");
+        require(_price > 0, "The price should be more than 0");
         //edit price
         listing.price = _price;
         listing.updatedAt = block.timestamp;
@@ -99,7 +100,7 @@ contract LimePlace is Ownable {
     }
     
     function getBalance() external view onlyOwner returns(uint256) {
-        return this.getBalance();
+        return address(this).balance;
     }
 
     function getPendingFees() external view onlyOwner returns(uint256) {
@@ -110,11 +111,15 @@ contract LimePlace is Ownable {
         return _fees;
     }
 
+    function withdrawFees() external onlyOwner {
+        payable(msg.sender).transfer(_fees);
+    }
+
     //modifiers
     modifier isNotExpired(bytes32 _listingId) {
         Listing storage listing = _listings[_listingId];
         uint256 oneMonth = 30 days;
-        require(listing.updatedAt + oneMonth >= block.timestamp, "This listing is expired!");
+        require(listing.updatedAt + oneMonth >= block.timestamp, "This listing is expired");
         _;
     }
     
