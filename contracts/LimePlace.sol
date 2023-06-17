@@ -2,11 +2,12 @@
 pragma solidity 0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import '@openzeppelin/contracts/access/Ownable.sol';
 
-contract LimePlace {
+contract LimePlace is Ownable {
     uint256 public LISTING_FEE = 100000000000000 wei;
-    uint256 private pendingFees;
-    uint256 private fees;
+    uint256 private _pendingFees;
+    uint256 private _fees;
     
     mapping(bytes32 => Listing) private _listings;
 
@@ -41,7 +42,7 @@ contract LimePlace {
             true,
             block.timestamp
         );
-        pendingFees += msg.value;
+        _pendingFees += msg.value;
         emit LogListingAdded(listingId, _tokenContract, _tokenId, msg.sender, _price);
         return listingId;
     }
@@ -63,7 +64,7 @@ contract LimePlace {
         require(listing.listed == true, "Listing is already canceled");
         
         listing.listed = false;
-        pendingFees -= LISTING_FEE;
+        _pendingFees -= LISTING_FEE;
         payable (msg.sender).transfer(LISTING_FEE);
         
         emit LogListingCanceled(_listingId, false);
@@ -80,8 +81,8 @@ contract LimePlace {
         address payable seller = payable(listing.seller);
         listing.listed = false;
         
-        pendingFees -= LISTING_FEE;
-        fees += LISTING_FEE;
+        _pendingFees -= LISTING_FEE;
+        _fees += LISTING_FEE;
         
         IERC721(listing.tokenContract).transferFrom(seller, buyer, listing.tokenId);
         seller.transfer(msg.value);
@@ -95,6 +96,18 @@ contract LimePlace {
     
     function generateListingId(address _contractAddress, uint256 _tokenId) public view returns(bytes32) {
         return keccak256(abi.encode(_contractAddress, _tokenId, block.timestamp));
+    }
+    
+    function getBalance() external view onlyOwner returns(uint256) {
+        return this.getBalance();
+    }
+
+    function getPendingFees() external view onlyOwner returns(uint256) {
+        return _pendingFees;
+    }
+
+    function getFees() external view onlyOwner returns(uint256) {
+        return _fees;
     }
 
     //modifiers
