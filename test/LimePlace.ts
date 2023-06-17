@@ -15,7 +15,7 @@ describe("LimePlace", () => {
     let user1: SignerWithAddress;
     let user2: SignerWithAddress;
     [owner, user1, user2] = await ethers.getSigners();
-
+    
     const marketPlaceFactory = (await  ethers.getContractFactory("LimePlace")) as LimePlace__factory;
     const marketPlace = await marketPlaceFactory.deploy();
     await marketPlace.deployed();
@@ -52,11 +52,13 @@ describe("LimePlace", () => {
     //wait transaction to complete in order to get listingId
     const tx = await marketPlace.connect(user).list(nft.address, tokenId, price, options);
     const rc = await tx.wait(); // 0ms, as tx is already confirmed
-    // @ts-ignore
-    const event = rc.events.find(event => event.event === 'LogListingAdded');
-    // @ts-ignore
-    const [listingId] = event.args;
-    return listingId;
+    const events = rc?.events;
+    if(events === undefined) {
+      return '';
+    }
+    const event = events.find(event => event.event === 'LogListingAdded');
+    const listingId = event?.args?.[0];
+    return listingId ?? '';
   }
   
   
