@@ -4,6 +4,7 @@
   "description": "LimePlaceContracts is hardhat project containing all needed smart contracts for the NFT market palce",
   "main": "index.js",
   "scripts": {
+    "npx": "npx",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
