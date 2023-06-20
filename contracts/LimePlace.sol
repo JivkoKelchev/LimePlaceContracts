@@ -26,7 +26,7 @@ contract LimePlace is Ownable {
     event LogListingSold(bytes32 listingId, address buyer, uint256 price);
 
     // List the NFT on the marketplace
-    function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable returns(bytes32){
+    function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable{
         require(_price > 0, "Price must be at least 1 wei");
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
@@ -44,7 +44,6 @@ contract LimePlace is Ownable {
         );
         _pendingFees += msg.value;
         emit LogListingAdded(listingId, _tokenContract, _tokenId, msg.sender, _price);
-        return listingId;
     }
     
     //edit is used for edit price or cancel listing
