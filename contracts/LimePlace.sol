@@ -75,7 +75,7 @@ contract LimePlace is Ownable {
         
         Listing storage listing = _listings[_listingId];
         require(listing.listed == true, "This listing is not active");
-        require(msg.value >= listing.price, "Not enough ether to cover asking price");
+        require(msg.value == listing.price, "Not enough ether to cover asking price");
 
         address payable buyer = payable(msg.sender);
         address payable seller = payable(listing.seller);
