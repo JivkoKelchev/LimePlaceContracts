@@ -85,7 +85,7 @@ describe("LimePlace", () => {
     it("Should fail if token not supporting ERC721", async () => {
       const {marketPlace, nft, user1} = await loadFixture(deploy);
       const options = {value: ethers.utils.parseEther("0.0001")}
-      expect(marketPlace.connect(user1).list(marketPlace.address, 1, 100, options)).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).list(marketPlace.address, 1, ethers.utils.parseEther('1'), options)).to.be.revertedWith(
           "This marketplace support only ERC721 tokens");
     });
 

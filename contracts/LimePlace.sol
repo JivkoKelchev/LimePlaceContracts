@@ -3,9 +3,11 @@ pragma solidity 0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import '@openzeppelin/contracts/access/Ownable.sol';
+import "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import './LimePlaceNFT.sol';
 
 contract LimePlace is Ownable {
+    using ERC165Checker for address;
     uint256 public LISTING_FEE = 100000000000000 wei;
     uint256 private _pendingFees;
     uint256 private _fees;
@@ -45,7 +47,7 @@ contract LimePlace is Ownable {
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
         //check if token is supporting erc721
-        require(IERC721(_tokenContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
+        require(_tokenContract.supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
         require(IERC721(_tokenContract).isApprovedForAll(msg.sender, address (this)), "LimePlace should be approved for operator");
         bytes32 listingId = generateListingId(_tokenContract, _tokenId);
         _listings[listingId] = Listing(
