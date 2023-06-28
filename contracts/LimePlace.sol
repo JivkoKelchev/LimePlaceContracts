@@ -28,7 +28,7 @@ contract LimePlace is Ownable {
     event LogListingSold(bytes32 listingId, address buyer, uint256 price);
     event LogCollectionCreated(address collectionAddress, string name, string symbol);
     
-    function createCollection(string memory _name, string memory _symbol) public {
+    function createERC721Collection(string memory _name, string memory _symbol) public {
         bytes memory tempName = bytes(_name);
         bytes memory tempSymbol = bytes(_symbol);
         require(tempName.length > 0 && tempSymbol.length > 0, "Name and Symbol are mandatory");
@@ -36,12 +36,12 @@ contract LimePlace is Ownable {
         LimePlaceNFT newCollection = new LimePlaceNFT(_name, _symbol);
         address collectionAddress = address(newCollection);
         _collections[collectionAddress] = [_name, _symbol];
-        emit LogCollectionCreated(address(newCollection), _name, _symbol);
+        emit LogCollectionCreated(collectionAddress, _name, _symbol);
     }
     
     // List the NFT on the marketplace
     function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable{
-        require(_price > 0, "Price must be at least 1 wei");
+        require(_price > LISTING_FEE, "Price must be more than listing fee");
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
         //check if token is supporting erc721
@@ -89,7 +89,7 @@ contract LimePlace is Ownable {
         
         Listing storage listing = _listings[_listingId];
         require(listing.listed == true, "This listing is not active");
-        require(msg.value == listing.price, "Not enough ether to cover asking price");
+        require(msg.value == listing.price, "Value should be equal to the price");
 
         address payable buyer = payable(msg.sender);
         address payable seller = payable(listing.seller);
