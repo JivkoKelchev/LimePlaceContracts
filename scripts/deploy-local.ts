@@ -1,8 +1,8 @@
 import { ethers } from "hardhat";
-import { LimePlaceNFT__factory, LimePlaceNFT, LimePlace__factory,  LimePlace} from "../typechain-types";
+import {LimePlace__factory,  LimePlace} from "../typechain-types";
 import {SignerWithAddress} from "@nomiclabs/hardhat-ethers/signers";
 
-async function main() {
+export async function main() {
   let owner: SignerWithAddress;
   [owner] = await ethers.getSigners();
   let marketPlace: LimePlace;
@@ -12,12 +12,8 @@ async function main() {
   await marketPlace.deployed();
 
   const ownerAddress = await owner.getAddress();
+  console.log("Deploying to network: localhost");
   console.log(
       `Address: ${marketPlace.address}\nOwner: ${ownerAddress}`
   );
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
