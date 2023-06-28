@@ -28,7 +28,7 @@ contract LimePlace is Ownable {
     event LogListingUpdated(bytes32 listingId, uint256 price);
     event LogListingCanceled(bytes32 listingId, bool active);
     event LogListingSold(bytes32 listingId, address buyer, uint256 price);
-    event LogCollectionCreated(address collectionAddress, string name, string symbol);
+    event LogCollectionCreated(address collectionAddress, address collectionOwner, string name, string symbol);
     
     function createERC721Collection(string memory _name, string memory _symbol) public {
         bytes memory tempName = bytes(_name);
@@ -38,7 +38,7 @@ contract LimePlace is Ownable {
         LimePlaceNFT newCollection = new LimePlaceNFT(_name, _symbol);
         address collectionAddress = address(newCollection);
         _collections[collectionAddress] = [_name, _symbol];
-        emit LogCollectionCreated(collectionAddress, _name, _symbol);
+        emit LogCollectionCreated(collectionAddress, msg.sender, _name, _symbol);
     }
     
     // List the NFT on the marketplace
