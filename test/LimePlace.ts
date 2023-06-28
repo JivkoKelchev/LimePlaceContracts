@@ -19,10 +19,8 @@ describe("LimePlace", () => {
     const marketPlaceFactory = (await  ethers.getContractFactory("LimePlace")) as LimePlace__factory;
     const marketPlace = await marketPlaceFactory.deploy();
     await marketPlace.deployed();
-
-    const nftFactory = (await ethers.getContractFactory("LimePlaceNFT")) as LimePlaceNFT__factory;
-    const nft = await nftFactory.deploy("LimePlaceNFT", "LPNFT");
-    await nft.deployed();
+    
+    const nft = await createCollection(marketPlace,"LimePlaceNFT", "LPNFT");
     
     //mint 2 NFTs
     await nft.connect(user1).mint("testUri_1");
@@ -60,7 +58,16 @@ describe("LimePlace", () => {
     return listingId ?? '';
   }
   
-  
+  const createCollection = async (marketPlace: LimePlace, name: string, symbol: string) : Promise<LimePlaceNFT> => {
+    const tx = await marketPlace.createCollection(name, symbol);
+    const rc = await tx.wait();
+    const events = rc?.events;
+    // @ts-ignore
+    const event = events.find(event => event.event === 'LogCollectionCreated');
+    const collectionAddress = event?.args?.[0];
+    const nftFactory = (await  ethers.getContractFactory("LimePlaceNFT")) as LimePlaceNFT__factory;
+    return nftFactory.attach(collectionAddress);
+  }
 
   describe("List Nft", () => {
     it("Should fail on price 0", async () => {
@@ -241,6 +248,21 @@ describe("LimePlace", () => {
       expect(marketPlace.connect(user2).buy(listingId1, options))
           .to.emit(marketPlace, 'LogListingSold')
           .withArgs(listingId1, user2.address, 100);
+    });
+    
+  });
+
+  describe("Test collections", () => {
+    it("Should fail on empty name and symbol", async () => {
+      const {marketPlace, user1} = await loadFixture(deploy);
+      await expect(marketPlace.connect(user1).createCollection('', '')).to.be.revertedWith(
+          "Name and Symbol are mandatory");
+    });
+
+    it("Should return collection info", async () => {
+      const {marketPlace, nft} = await loadFixture(deploy);
+      const collectionInfo = await marketPlace.getCollection(nft.address)
+      expect(collectionInfo[0]).to.equal("LimePlaceNFT");
     });
     
   });
