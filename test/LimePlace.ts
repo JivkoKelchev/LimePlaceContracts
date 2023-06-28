@@ -71,7 +71,8 @@ describe("LimePlace", () => {
 
     it("Should fail without listing fee", async () => {
       const {marketPlace, nft, user1} = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).list(nft.address, 1, 100)).to.be.revertedWith(
+      //todo add await when expect revertedWith
+      await expect(marketPlace.connect(user1).list(nft.address, 1, 100)).to.be.revertedWith(
           "Not enough ether for listing fee");
     });
 
@@ -87,7 +88,7 @@ describe("LimePlace", () => {
       const options = {value: ethers.utils.parseEther("0.0001")}
       //mint unapproved token
       await nft.connect(owner).mint('test_69');
-      expect(marketPlace.connect(owner).list(nft.address, 3, 100, options)).to.be.revertedWith(
+      await expect(marketPlace.connect(owner).list(nft.address, 3, 100, options)).to.be.revertedWith(
           "LimePlace should be approved for operator");
     });
 
@@ -116,14 +117,14 @@ describe("LimePlace", () => {
   describe("Edit Listing", () => {
     it("Should fail on 0 price", async () => {
       const { marketPlace, nft, user1, listingId1 } = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).editListing(listingId1, 0)).to.revertedWith(
-        'he price should be more than 0'  
+      await expect(marketPlace.connect(user1).editListing(listingId1, 0)).to.revertedWith(
+        'The price should be more than 0'  
       );
     });
 
     it("Should fail when edit others listings", async () => {
       const {marketPlace, user1, listingId2 } = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).editListing(listingId2, 100)).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).editListing(listingId2, 100)).to.be.revertedWith(
           "You can edit only your listings");
     });
 
@@ -146,14 +147,14 @@ describe("LimePlace", () => {
   describe("Cancel Listing", () => {
     it("Should fail when cancel others listings", async () => {
       const {marketPlace, user1, listingId2 } = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).cancelListing(listingId2)).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).cancelListing(listingId2)).to.be.revertedWith(
           "You cancel only your listings");
     });
     
     it("Should fail when cancel canceled listings", async () => {
       const {marketPlace, user1, listingId1 } = await loadFixture(deploy);
       await marketPlace.connect(user1).cancelListing(listingId1);
-      expect(marketPlace.connect(user1).cancelListing(listingId1)).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).cancelListing(listingId1)).to.be.revertedWith(
           "Listing is already canceled");
     });
 
@@ -181,14 +182,14 @@ describe("LimePlace", () => {
     it("Should fail on canceld listings", async () => {
       const {marketPlace, user1, user2, listingId1 } = await loadFixture(deploy);
       await marketPlace.connect(user1).cancelListing(listingId1);
-      expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
+      await expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
           "This listing is not active");
     });
     
     
     it("Should fail on value < price", async () => {
       const {marketPlace, user2, listingId1 } = await loadFixture(deploy);
-      expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
+      await expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
           "Not enough ether to cover asking price");
     });
 
@@ -230,7 +231,7 @@ describe("LimePlace", () => {
 
       const listingId = await marketPlace.generateListingId(nft.address, 1);
       const options = {value: 100}
-      expect(marketPlace.connect(user2).buy(listingId, options)).to.be.revertedWith(
+      await expect(marketPlace.connect(user2).buy(listingId, options)).to.be.revertedWith(
           "This listing is expired");
     });
 
@@ -247,25 +248,25 @@ describe("LimePlace", () => {
   describe("Test owner functions", () => {
     it("Should fail if user call getBalance()", async () => {
       const {marketPlace, user1} = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).getBalance()).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).getBalance()).to.be.revertedWith(
           "Ownable: caller is not the owner");
     });
 
     it("Should fail if user call getPendingFees()", async () => {
       const {marketPlace, user1} = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).getPendingFees()).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).getPendingFees()).to.be.revertedWith(
           "Ownable: caller is not the owner");
     });
 
     it("Should fail if user call getFees()", async () => {
       const {marketPlace, user1} = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).getFees()).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).getFees()).to.be.revertedWith(
           "Ownable: caller is not the owner");
     });
 
     it("Should fail if user call withdrawFees()", async () => {
       const {marketPlace, user1} = await loadFixture(deploy);
-      expect(marketPlace.connect(user1).withdrawFees()).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).withdrawFees()).to.be.revertedWith(
           "Ownable: caller is not the owner");
     });
 
