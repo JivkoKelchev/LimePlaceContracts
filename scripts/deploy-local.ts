@@ -5,10 +5,12 @@ import {SignerWithAddress} from "@nomiclabs/hardhat-ethers/signers";
 export async function main() {
   let owner: SignerWithAddress;
   [owner] = await ethers.getSigners();
-  let marketPlace: LimePlace;
 
+  const provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:8545/');
+  const signer = await provider.getSigner(owner.address);
+  
   const marketPlaceFactory = (await ethers.getContractFactory("LimePlace")) as LimePlace__factory;
-  marketPlace = await marketPlaceFactory.deploy();
+  const marketPlace = await marketPlaceFactory.connect(signer).deploy();
   await marketPlace.deployed();
 
   const ownerAddress = await owner.getAddress();
