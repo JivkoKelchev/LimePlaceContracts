@@ -19,10 +19,8 @@ describe("LimePlace", () => {
     const marketPlaceFactory = (await  ethers.getContractFactory("LimePlace")) as LimePlace__factory;
     const marketPlace = await marketPlaceFactory.deploy();
     await marketPlace.deployed();
-
-    const nftFactory = (await ethers.getContractFactory("LimePlaceNFT")) as LimePlaceNFT__factory;
-    const nft = await nftFactory.deploy("LimePlaceNFT", "LPNFT");
-    await nft.deployed();
+    
+    const nft = await createCollection(marketPlace,"LimePlaceNFT", "LPNFT");
     
     //mint 2 NFTs
     await nft.connect(user1).mint("testUri_1");
@@ -34,8 +32,8 @@ describe("LimePlace", () => {
     //pay listing fee
     const options = {value: ethers.utils.parseEther(LISTING_FEE.toString())}
     //list 2 NFTs
-    const listingId1 = await listNFT(marketPlace,user1,nft,1,100,options);
-    const listingId2 = await listNFT(marketPlace, user2, nft,2, 150, options);
+    const listingId1 = await listNFT(marketPlace,user1,nft,1, ethers.utils.parseEther('1'),options);
+    const listingId2 = await listNFT(marketPlace, user2, nft,2, ethers.utils.parseEther('2'), options);
    
     return { marketPlace, nft, owner, user1, user2, listingId1, listingId2};
   }
@@ -45,7 +43,7 @@ describe("LimePlace", () => {
       user: SignerWithAddress, 
       nft: LimePlaceNFT, 
       tokenId: number, 
-      price: number, 
+      price: BigNumber, 
       options: Object
   ) : Promise<string> {
     //wait transaction to complete in order to get listingId
@@ -60,26 +58,34 @@ describe("LimePlace", () => {
     return listingId ?? '';
   }
   
+  const createCollection = async (marketPlace: LimePlace, name: string, symbol: string) : Promise<LimePlaceNFT> => {
+    const tx = await marketPlace.createERC721Collection(name, symbol);
+    const rc = await tx.wait();
+    const events = rc?.events;
+    // @ts-ignore
+    const event = events.find(event => event.event === 'LogCollectionCreated');
+    const collectionAddress = event?.args?.[0];
+    const nftFactory = (await  ethers.getContractFactory("LimePlaceNFT")) as LimePlaceNFT__factory;
+    return nftFactory.attach(collectionAddress);
+  }
   
-
   describe("List Nft", () => {
     it("Should fail on price 0", async () => {
       const {marketPlace, nft, user1} = await loadFixture(deploy);
       expect(marketPlace.connect(user1).list(nft.address, 1, 0)).to.be.revertedWith(
-          "Price must be at least 1 wei");
+          "Price must be more than listing fee");
     });
 
     it("Should fail without listing fee", async () => {
       const {marketPlace, nft, user1} = await loadFixture(deploy);
-      //todo add await when expect revertedWith
-      await expect(marketPlace.connect(user1).list(nft.address, 1, 100)).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).list(nft.address, 1, ethers.utils.parseEther('1'))).to.be.revertedWith(
           "Not enough ether for listing fee");
     });
 
     it("Should fail if token not supporting ERC721", async () => {
       const {marketPlace, nft, user1} = await loadFixture(deploy);
       const options = {value: ethers.utils.parseEther("0.0001")}
-      expect(marketPlace.connect(user1).list(marketPlace.address, 1, 100, options)).to.be.revertedWith(
+      await expect(marketPlace.connect(user1).list(marketPlace.address, 1, ethers.utils.parseEther('1'), options)).to.be.revertedWith(
           "This marketplace support only ERC721 tokens");
     });
 
@@ -88,14 +94,14 @@ describe("LimePlace", () => {
       const options = {value: ethers.utils.parseEther("0.0001")}
       //mint unapproved token
       await nft.connect(owner).mint('test_69');
-      await expect(marketPlace.connect(owner).list(nft.address, 3, 100, options)).to.be.revertedWith(
+      await expect(marketPlace.connect(owner).list(nft.address, 3, ethers.utils.parseEther('1'), options)).to.be.revertedWith(
           "LimePlace should be approved for operator");
     });
 
     it("Should list with correct price", async () => {
       const {marketPlace, listingId1} = await loadFixture(deploy);
       const listing = await marketPlace.getListing(listingId1);
-      expect(listing.price).to.equal(100);
+      expect(ethers.utils.formatEther(listing.price)).to.equal('1.0');
     })
 
     it("Should pay fees", async () => {
@@ -190,12 +196,12 @@ describe("LimePlace", () => {
     it("Should fail on value < price", async () => {
       const {marketPlace, user2, listingId1 } = await loadFixture(deploy);
       await expect(marketPlace.connect(user2).buy(listingId1)).to.be.revertedWith(
-          "Not enough ether to cover asking price");
+          "Value should be equal to the price");
     });
 
     it("Should transfer the token", async () => {
       const {marketPlace, nft, user1, listingId2 } = await loadFixture(deploy);
-      const options = {value: 150}
+      const options = {value: ethers.utils.parseEther('2')}
       await marketPlace.connect(user1).buy(listingId2, options);
       const newOwner = await nft.ownerOf(2)
       expect(newOwner).to.equal(user1.address);
@@ -203,7 +209,7 @@ describe("LimePlace", () => {
 
     it("Should cancel listing after buy", async () => {
       const {marketPlace, user1, listingId2 } = await loadFixture(deploy);
-      const options = {value: 150}
+      const options = {value: ethers.utils.parseEther('2')}
       await marketPlace.connect(user1).buy(listingId2, options);
       const listing = await marketPlace.getListing(listingId2);
       expect(listing.listed).to.equal(false);
@@ -211,7 +217,7 @@ describe("LimePlace", () => {
 
     it("Should move fees from pending", async () => {
       const {marketPlace, owner, user1, listingId2 } = await loadFixture(deploy);
-      const options = {value: 150}
+      const options = {value: ethers.utils.parseEther('2')}
       await marketPlace.connect(user1).buy(listingId2, options);
       const balance = await marketPlace.connect(owner).getBalance();
       const pendingFees = await marketPlace.connect(owner).getPendingFees();
@@ -245,6 +251,21 @@ describe("LimePlace", () => {
     
   });
 
+  describe("Test collections", () => {
+    it("Should fail on empty name and symbol", async () => {
+      const {marketPlace, user1} = await loadFixture(deploy);
+      await expect(marketPlace.connect(user1).createERC721Collection('', '')).to.be.revertedWith(
+          "Name and Symbol are mandatory");
+    });
+
+    it("Should return collection info", async () => {
+      const {marketPlace, nft} = await loadFixture(deploy);
+      const collectionInfo = await marketPlace.getCollection(nft.address)
+      expect(collectionInfo[0]).to.equal("LimePlaceNFT");
+    });
+    
+  });
+
   describe("Test owner functions", () => {
     it("Should fail if user call getBalance()", async () => {
       const {marketPlace, user1} = await loadFixture(deploy);
@@ -272,7 +293,7 @@ describe("LimePlace", () => {
 
     it("Should withdraw Fees", async () => {
       const {marketPlace, owner, user1, listingId2 } = await loadFixture(deploy);
-      const options = {value: 150}
+      const options = {value: ethers.utils.parseEther('2')}
       await marketPlace.connect(user1).buy(listingId2, options);
       const fees = await marketPlace.connect(owner).getFees();
       

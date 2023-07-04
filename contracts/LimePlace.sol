@@ -3,13 +3,17 @@ pragma solidity 0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import '@openzeppelin/contracts/access/Ownable.sol';
+import "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import './LimePlaceNFT.sol';
 
 contract LimePlace is Ownable {
+    using ERC165Checker for address;
     uint256 public LISTING_FEE = 100000000000000 wei;
     uint256 private _pendingFees;
     uint256 private _fees;
     
     mapping(bytes32 => Listing) private _listings;
+    mapping(address => string[2]) private _collections;
 
     struct Listing {
         address tokenContract;
@@ -24,14 +28,26 @@ contract LimePlace is Ownable {
     event LogListingUpdated(bytes32 listingId, uint256 price);
     event LogListingCanceled(bytes32 listingId, bool active);
     event LogListingSold(bytes32 listingId, address buyer, uint256 price);
-
+    event LogCollectionCreated(address collectionAddress, address collectionOwner, string name, string symbol);
+    
+    function createERC721Collection(string memory _name, string memory _symbol) public {
+        bytes memory tempName = bytes(_name);
+        bytes memory tempSymbol = bytes(_symbol);
+        require(tempName.length > 0 && tempSymbol.length > 0, "Name and Symbol are mandatory");
+        
+        LimePlaceNFT newCollection = new LimePlaceNFT(_name, _symbol);
+        address collectionAddress = address(newCollection);
+        _collections[collectionAddress] = [_name, _symbol];
+        emit LogCollectionCreated(collectionAddress, msg.sender, _name, _symbol);
+    }
+    
     // List the NFT on the marketplace
     function list(address _tokenContract, uint256 _tokenId, uint256 _price) public payable{
-        require(_price > 0, "Price must be at least 1 wei");
+        require(_price > LISTING_FEE, "Price must be more than listing fee");
         require(msg.value == LISTING_FEE, "Not enough ether for listing fee");
         
         //check if token is supporting erc721
-        require(IERC721(_tokenContract).supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
+        require(_tokenContract.supportsInterface(0x80ac58cd), "This marketplace support only ERC721 tokens");
         require(IERC721(_tokenContract).isApprovedForAll(msg.sender, address (this)), "LimePlace should be approved for operator");
         bytes32 listingId = generateListingId(_tokenContract, _tokenId);
         _listings[listingId] = Listing(
@@ -75,7 +91,7 @@ contract LimePlace is Ownable {
         
         Listing storage listing = _listings[_listingId];
         require(listing.listed == true, "This listing is not active");
-        require(msg.value == listing.price, "Not enough ether to cover asking price");
+        require(msg.value == listing.price, "Value should be equal to the price");
 
         address payable buyer = payable(msg.sender);
         address payable seller = payable(listing.seller);
@@ -92,6 +108,10 @@ contract LimePlace is Ownable {
     
     function getListing(bytes32 _listingId) public view returns (Listing memory) {
         return _listings[_listingId];
+    }
+    
+    function getCollection(address _collectionAddress) public view returns (string[2] memory) {
+        return _collections[_collectionAddress];
     }
     
     function generateListingId(address _contractAddress, uint256 _tokenId) public view returns(bytes32) {
@@ -121,7 +141,4 @@ contract LimePlace is Ownable {
         require(listing.updatedAt + oneMonth >= block.timestamp, "This listing is expired");
         _;
     }
-    
-    //check for wrapped ether
-    //https://sepolia.etherscan.io/token/0x7b79995e5f793a07bc00c21412e50ecae098e7f9
 }
