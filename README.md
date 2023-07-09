@@ -21,6 +21,9 @@ A hardhat project.
 Tests and code coverage of LimePlace contracts
 
 Deploy contracts on local and testnets.
+* npx hardhat deploy-local
+* npx hardhat depoly-sepolia
+* npx hardhat depoly-goerli
 
 ## Features
 
