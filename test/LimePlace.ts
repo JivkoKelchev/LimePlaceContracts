@@ -1,4 +1,10 @@
-import { LimePlaceNFT__factory, LimePlaceNFT, LimePlace, LimePlace__factory } from "../typechain-types";
+import {
+  LimePlaceNFT__factory,
+  LimePlaceNFT,
+  LimePlace,
+  LimePlace__factory,
+  SimpleNFT__factory
+} from "../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { ethers } from "hardhat";
@@ -36,6 +42,14 @@ describe("LimePlace", () => {
     const listingId2 = await listNFT(marketPlace, user2, nft,2, ethers.utils.parseEther('2'), options);
    
     return { marketPlace, nft, owner, user1, user2, listingId1, listingId2};
+  }
+  
+  const deployExternalToken = async () => {
+    const simpleTokenFactory = (await  ethers.getContractFactory("SimpleNFT")) as SimpleNFT__factory;
+    const simpleToken = await simpleTokenFactory.deploy("NoUriToken", "NUT");
+    await simpleToken.deployed();
+
+    return simpleToken;
   }
   
   async function listNFT(
@@ -111,6 +125,25 @@ describe("LimePlace", () => {
       const expectedFees = ethers.utils.parseEther(LISTING_FEE.toString());
       expect(balance).to.equal(pendingFees).to.equal(expectedFees.mul(2));
     })
+
+    it( "Should list external tokens", async () => {
+      const {marketPlace, owner} = await loadFixture(deploy);
+      const exNft = await loadFixture(deployExternalToken);
+      await exNft.connect(owner).mint(1);
+      await exNft.setApprovalForAll(marketPlace.address, true);
+      const price = ethers.utils.parseEther('1');
+      const options = {value: ethers.utils.parseEther(LISTING_FEE.toString())}
+      const tx = await marketPlace.connect(owner).list(exNft.address, 1, price, options);
+      const rc = await tx.wait(); // 0ms, as tx is already confirmed
+      const events = rc?.events;
+      if(events === undefined) {
+        return '';
+      }
+      const event = events.find(event => event.event === 'LogListingAdded');
+      const listingId = event?.args?.[0];
+      const listing = await marketPlace.getListing(listingId);
+      expect(listing.tokenId).to.equal(1);
+    });
     
     it("Should emit event LogListingAdded", async () => {
       const { marketPlace, nft, user1 } = await loadFixture(deploy);

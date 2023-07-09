@@ -1,6 +1,5 @@
 import { ethers, config } from "hardhat";
 import { HttpNetworkConfig} from "hardhat/types";
-import {SignerWithAddress} from "@nomiclabs/hardhat-ethers/signers";
 import {LimePlace, LimePlace__factory} from "../typechain-types";
 
 export async function main(networkName: string) {
